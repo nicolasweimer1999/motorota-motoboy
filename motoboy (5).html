@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>MotoRota — Motoboy</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap');
+:root {
+  --bg:#0d0d0f; --surface:#16161a; --surface2:#1e1e24; --border:#2a2a35;
+  --accent:#f5a623; --accent2:#ff6b35; --green:#2ddb81; --red:#ff4757;
+  --purple:#a855f7; --text:#f0f0f5; --muted:#6b6b80; --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+.screen{display:none;flex-direction:column;min-height:100vh}
+.screen.active{display:flex}
+
+/* ── SETUP ── */
+#setup{padding:28px 20px;gap:20px;align-items:stretch}
+.logo{display:flex;align-items:center;gap:10px;padding:8px 0 8px}
+.logo-icon{width:40px;height:40px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px}
+.logo-text{font-size:22px;font-weight:800}
+.logo-text span{color:var(--accent)}
+.field-label{font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+.input{background:var(--surface);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'DM Mono',monospace;font-size:13px;padding:12px 14px;width:100%;outline:none;transition:border-color .2s}
+.input:focus{border-color:var(--accent)}
+.input::placeholder{color:var(--muted)}
+.hint{font-size:11px;color:var(--muted);line-height:1.6;background:var(--surface);border-radius:8px;padding:10px 12px;border-left:2px solid var(--accent)}
+
+/* ── LOGIN ── */
+#login{padding:28px 20px;gap:20px}
+.motoboy-list{display:flex;flex-direction:column;gap:8px}
+.motoboy-item{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:14px}
+.motoboy-item:active{transform:scale(.98);border-color:var(--accent)}
+.mi-avatar{width:42px;height:42px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.mi-info{flex:1}
+.mi-name{font-size:15px;font-weight:700}
+.mi-phone{font-size:11px;color:var(--muted);font-family:'DM Mono',monospace}
+.mi-arrow{color:var(--muted);font-size:18px}
+
+/* ── WAITING ── */
+#waiting{justify-content:center;align-items:center;gap:24px;text-align:center;padding:40px 24px;
+  background:radial-gradient(ellipse at 50% 30%,rgba(245,166,35,0.1) 0%,var(--bg) 60%)}
+.waiting-icon{width:80px;height:80px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:36px;animation:pulse 2.5s ease-in-out infinite;box-shadow:0 0 40px rgba(245,166,35,0.3)}
+@keyframes pulse{0%,100%{box-shadow:0 0 40px rgba(245,166,35,0.3)}50%{box-shadow:0 0 60px rgba(245,166,35,0.6)}}
+.waiting-title{font-size:26px;font-weight:800}
+.waiting-sub{font-size:14px;color:var(--muted)}
+.moto-chip{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);border-radius:30px;padding:8px 16px;font-size:13px;font-weight:600}
+.moto-chip .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 6px var(--green)}
+
+/* ── MAP SCREEN ── */
+#mapscreen{position:relative;height:100vh;overflow:hidden}
+#map{height:100%;width:100%}
+.map-topbar{position:absolute;top:12px;left:12px;right:12px;z-index:1000;background:rgba(13,13,15,0.92);backdrop-filter:blur(12px);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;display:flex;align-items:center;justify-content:space-between}
+.topbar-title{font-size:14px;font-weight:700}
+.topbar-progress{font-family:'DM Mono',monospace;font-size:12px;color:var(--accent)}
+.gps-indicator{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted)}
+.gps-dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+.gps-dot.active{background:var(--green);box-shadow:0 0 6px var(--green)}
+
+.bottom-panel{position:absolute;bottom:0;left:0;right:0;z-index:1000;background:var(--surface);border-top:1px solid var(--border);border-radius:20px 20px 0 0;padding:18px 18px 32px;display:flex;flex-direction:column;gap:12px}
+.panel-drag{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto -4px}
+.current-delivery{display:flex;gap:12px;align-items:flex-start}
+.delivery-badge{min-width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;color:#000}
+.delivery-badge.last{background:linear-gradient(135deg,var(--purple),#7c3aed)}
+.delivery-details{flex:1}
+.delivery-title{font-size:16px;font-weight:700;line-height:1.2}
+.delivery-address{font-size:11px;color:var(--muted);margin-top:3px;font-family:'DM Mono',monospace}
+.delivery-tag{font-size:11px;font-weight:600;margin-top:4px}
+.action-buttons{display:flex;gap:8px}
+.btn-confirm{flex:1;background:var(--green);color:#000;padding:14px;font-size:14px;font-weight:700;border-radius:12px;border:none;cursor:pointer;font-family:'Syne',sans-serif;transition:all .18s}
+.btn-confirm:active{transform:scale(.97)}
+.btn-maps{background:var(--surface2);border:1px solid var(--border);color:var(--text);padding:14px 18px;border-radius:12px;font-size:13px;font-weight:600;border-width:1px;cursor:pointer;font-family:'Syne',sans-serif}
+.btn-return{flex:1;background:linear-gradient(135deg,var(--purple),#7c3aed);color:#fff;padding:14px;font-size:14px;font-weight:700;border-radius:12px;border:none;cursor:pointer;font-family:'Syne',sans-serif}
+.stops-list{display:flex;flex-direction:column;gap:5px;max-height:130px;overflow-y:auto}
+.stop-item{display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:8px;background:var(--surface2);transition:all .2s}
+.stop-item.active-stop{border:1px solid var(--accent);background:rgba(245,166,35,0.08)}
+.stop-item.completed{opacity:.4}
+.stop-dot{width:8px;height:8px;border-radius:50%;background:var(--border);flex-shrink:0}
+.stop-dot.active-dot{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.stop-dot.done-dot{background:var(--green)}
+.stop-label{font-size:12px;font-weight:600;flex:1}
+.stop-eta{font-size:10px;color:var(--muted);font-family:'DM Mono',monospace}
+
+/* ── RETURN ── */
+#returnscreen{padding:32px 24px;justify-content:center;align-items:center;gap:24px;
+  background:radial-gradient(ellipse at 50% 30%,rgba(168,85,247,0.15) 0%,var(--bg) 60%);text-align:center}
+.return-icon{width:80px;height:80px;background:linear-gradient(135deg,var(--purple),#7c3aed);border-radius:24px;display:flex;align-items:center;justify-content:center;font-size:36px;box-shadow:0 0 40px rgba(168,85,247,0.4);animation:pulseP 2s ease-in-out infinite}
+@keyframes pulseP{0%,100%{box-shadow:0 0 40px rgba(168,85,247,0.4)}50%{box-shadow:0 0 60px rgba(168,85,247,0.7)}}
+.return-title{font-size:28px;font-weight:800;line-height:1.1}
+.eta-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;width:100%;max-width:320px}
+.eta-label{font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.eta-time{font-size:52px;font-weight:800;color:var(--accent);line-height:1;font-family:'DM Mono',monospace}
+.eta-unit{font-size:16px;color:var(--muted);margin-top:4px}
+.eta-arrive{font-size:14px;margin-top:12px}
+.eta-arrive span{color:var(--green);font-weight:700}
+.stats-row{display:flex;gap:12px;width:100%;max-width:320px}
+.stat-card{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;text-align:center}
+.stat-value{font-size:24px;font-weight:800;font-family:'DM Mono',monospace}
+.stat-label{font-size:11px;color:var(--muted);margin-top:4px}
+
+.btn{border:none;cursor:pointer;font-family:'Syne',sans-serif;font-weight:700;border-radius:10px;transition:all .18s;display:flex;align-items:center;justify-content:center;gap:6px;width:100%}
+.btn-accent{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#000;padding:14px 20px;font-size:14px}
+.btn-accent:active{transform:scale(.97)}
+.btn-accent:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text);padding:12px 16px;font-size:13px}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+
+.toast{position:fixed;bottom:180px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--green);color:#000;padding:10px 20px;border-radius:30px;font-weight:700;font-size:13px;opacity:0;transition:all .3s;z-index:9999;white-space:nowrap}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.toast.error{background:var(--red);color:#fff}
+.leaflet-container{background:#1a1a22}
+</style>
+</head>
+<body>
+
+<!-- ── SETUP ── -->
+<div id="setup" class="screen active">
+  <div class="logo"><div class="logo-icon">🏍️</div><div class="logo-text">Moto<span>Rota</span></div></div>
+  <div>
+    <div class="field-label">Supabase URL</div>
+    <input class="input" id="sbUrl" placeholder="https://xxxx.supabase.co">
+  </div>
+  <div>
+    <div class="field-label">Anon Key</div>
+    <input class="input" id="sbKey" placeholder="eyJ..." type="password">
+  </div>
+  <div class="hint">🔑 Mesmas credenciais do painel Admin</div>
+  <button class="btn btn-accent" onclick="initApp()">Entrar →</button>
+</div>
+
+<!-- ── LOGIN ── -->
+<div id="login" class="screen">
+  <div class="logo"><div class="logo-icon">🏍️</div><div class="logo-text">Moto<span>Rota</span></div></div>
+  <div style="font-size:18px;font-weight:800">Quem é você?</div>
+  <div class="motoboy-list" id="motoboyList">
+    <div style="color:var(--muted);font-size:13px">Carregando...</div>
+  </div>
+  <button class="btn btn-outline" onclick="resetConfig()" style="margin-top:auto">⚙️ Trocar credenciais</button>
+</div>
+
+<!-- ── WAITING ── -->
+<div id="waiting" class="screen">
+  <div class="waiting-icon">🏍️</div>
+  <div>
+    <div class="waiting-title">Aguardando rota</div>
+    <div class="waiting-sub" style="margin-top:6px">O admin vai enviar suas entregas em breve</div>
+  </div>
+  <div class="moto-chip" id="waitingChip">
+    <div class="dot"></div>
+    <span id="waitingName">—</span>
+  </div>
+  <div style="font-size:11px;color:var(--muted);font-family:'DM Mono',monospace" id="waitingStatus">🔔 Conectado — aguardando...</div>
+  <button class="btn btn-outline" style="max-width:200px;margin-top:16px" onclick="logoutMotoboy()">Trocar usuário</button>
+</div>
+
+<!-- ── MAP ── -->
+<div id="mapscreen" class="screen">
+  <div id="map"></div>
+  <div class="map-topbar">
+    <div class="topbar-title">🏍️ MotoRota</div>
+    <div class="gps-indicator"><div class="gps-dot" id="gpsDot"></div><span id="gpsLabel">GPS</span></div>
+    <div class="topbar-progress" id="topProgress">0/0</div>
+  </div>
+  <div class="bottom-panel">
+    <div class="panel-drag"></div>
+    <div class="current-delivery" id="currentDelivery"></div>
+    <div class="action-buttons" id="actionButtons"></div>
+    <div class="stops-list" id="stopsList"></div>
+  </div>
+</div>
+
+<!-- ── RETURN ── -->
+<div id="returnscreen" class="screen">
+  <div class="return-icon">🏠</div>
+  <div>
+    <div class="return-title">Voltando<br>pra base!</div>
+    <div style="font-size:14px;color:var(--muted);margin-top:8px">Todas as entregas concluídas</div>
+  </div>
+  <div class="eta-card">
+    <div class="eta-label">Previsão de chegada</div>
+    <div class="eta-time" id="etaMinutes">--</div>
+    <div class="eta-unit">minutos</div>
+    <div class="eta-arrive">Chegada às <span id="etaClock">--:--</span></div>
+  </div>
+  <div class="stats-row">
+    <div class="stat-card"><div class="stat-value" id="statD">0</div><div class="stat-label">Entregas</div></div>
+    <div class="stat-card"><div class="stat-value" id="statKm">0</div><div class="stat-label">km até a base</div></div>
+    <div class="stat-card"><div class="stat-value" id="statMin">0</div><div class="stat-label">minutos</div></div>
+  </div>
+  <button class="btn btn-accent" style="max-width:320px" onclick="finishRoute()">✓ Finalizar rota</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ── BASE FIXA ──
+const BASE = { name: 'DuValle Burguer', lat: -29.4707284, lng: -51.2825693 };
+let sb = null;
+let currentMotoboy = null;
+let currentRoute = null;
+let deliveries = [];
+let currentIdx = 0;
+let map = null, markers = {}, routeLine = null;
+let gpsWatchId = null;
+let startTime = null;
+let routeChannel = null, posChannel = null;
+
+// ─── INIT ──────────────────────────────────────
+async function initApp() {
+  const url = document.getElementById('sbUrl').value.trim();
+  const key = document.getElementById('sbKey').value.trim();
+  if (!url || !key) { showToast('Preenche as credenciais!', true); return; }
+  try {
+    sb = window.supabase.createClient(url, key);
+    const { error } = await sb.from('motoboys').select('id').limit(1);
+    if (error) throw error;
+    localStorage.setItem('sb_url', url);
+    localStorage.setItem('sb_key', key);
+    await loadLoginScreen();
+  } catch(e) {
+    showToast('Erro: ' + (e.message || 'Credenciais inválidas'), true);
+  }
+}
+
+async function loadLoginScreen() {
+  // Auto-login if saved
+  const saved = localStorage.getItem('motorota_motoboy');
+  if (saved) {
+    const m = JSON.parse(saved);
+    await loginAs(m.id, m.name, m.phone || '');
+    return;
+  }
+  showScreen('login');
+  const { data } = await sb.from('motoboys').select('*').order('name');
+  const el = document.getElementById('motoboyList');
+  if (!data?.length) {
+    el.innerHTML = '<div style="color:var(--muted);font-size:13px;text-align:center;padding:20px">Nenhum motoboy cadastrado.<br>Pede pro admin adicionar primeiro.</div>';
+    return;
+  }
+  el.innerHTML = data.map(m => `
+    <div class="motoboy-item" onclick="loginAs('${m.id}','${m.name}','${m.phone||''}')">
+      <div class="mi-avatar">🏍️</div>
+      <div class="mi-info">
+        <div class="mi-name">${m.name}</div>
+        <div class="mi-phone">${m.phone || 'Sem telefone'}</div>
+      </div>
+      <div class="mi-arrow">›</div>
+    </div>`).join('');
+}
+
+async function loginAs(id, name, phone) {
+  currentMotoboy = { id, name, phone };
+  localStorage.setItem('motorota_motoboy', JSON.stringify(currentMotoboy));
+  await sb.from('motoboys').update({ status: 'available', last_seen: new Date().toISOString() }).eq('id', id);
+  document.getElementById('waitingName').textContent = name;
+  showScreen('waiting');
+  subscribeToRoute();
+  startGPS();
+}
+
+async function logoutMotoboy() {
+  localStorage.removeItem('motorota_motoboy');
+  stopGPS();
+  if (routeChannel) sb.removeChannel(routeChannel);
+  if (currentMotoboy) await sb.from('motoboys').update({ status:'offline' }).eq('id', currentMotoboy.id);
+  currentMotoboy = null;
+  await loadLoginScreen();
+}
+
+function resetConfig() {
+  localStorage.removeItem('sb_url');
+  localStorage.removeItem('sb_key');
+  localStorage.removeItem('motorota_motoboy');
+  stopGPS();
+  if (routeChannel) sb.removeChannel(routeChannel);
+  showScreen('setup');
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  const url = localStorage.getItem('sb_url');
+  const key = localStorage.getItem('sb_key');
+  if (url && key) {
+    document.getElementById('sbUrl').value = url;
+    document.getElementById('sbKey').value = key;
+    sb = window.supabase.createClient(url, key);
+    loadLoginScreen();
+  }
+});
+
+// ─── ROUTE SUBSCRIPTION ────────────────────────
+function subscribeToRoute() {
+  if (routeChannel) sb.removeChannel(routeChannel);
+  routeChannel = sb.channel('motoboy-route-'+currentMotoboy.id)
+    .on('postgres_changes', {
+      event: '*', schema: 'public', table: 'routes',
+      filter: `motoboy_id=eq.${currentMotoboy.id}`
+    }, async (payload) => {
+      const r = payload.new;
+      if (r.status === 'active' && !currentRoute) {
+        await loadRoute(r.id);
+      }
+    })
+    .subscribe();
+
+  // Check for existing active route on login
+  checkExistingRoute();
+}
+
+async function checkExistingRoute() {
+  const { data } = await sb.from('routes').select('*').eq('motoboy_id', currentMotoboy.id).eq('status','active').maybeSingle();
+  if (data) await loadRoute(data.id);
+}
+
+async function loadRoute(routeId) {
+  const { data: route } = await sb.from('routes').select('*').eq('id', routeId).single();
+  const { data: delivData } = await sb.from('deliveries').select('*').eq('route_id', routeId).order('order_index');
+  if (!route || !delivData) return;
+  currentRoute = route;
+  deliveries = delivData;
+  currentIdx = deliveries.findIndex(d => d.status === 'pending');
+  if (currentIdx === -1) currentIdx = deliveries.length;
+  startTime = new Date();
+  await sb.from('motoboys').update({ status: 'on_route' }).eq('id', currentMotoboy.id);
+  initRouteMap();
+  showScreen('mapscreen');
+  renderBottomPanel();
+  showToast('📦 Nova rota recebida!');
+}
+
+// ─── GPS ─────────────────────────────────────
+function startGPS() {
+  if (!navigator.geolocation) return;
+  let lastUpdate = 0;
+  gpsWatchId = navigator.geolocation.watchPosition(async (pos) => {
+    const now = Date.now();
+    if (now - lastUpdate < 20000) return; // update every 20s max
+    lastUpdate = now;
+    const { latitude: lat, longitude: lng } = pos.coords;
+    window._lastGPS = { lat, lng };
+    document.getElementById('gpsDot').classList.add('active');
+    document.getElementById('gpsLabel').textContent = 'GPS ✓';
+    if (currentMotoboy && sb) {
+      await sb.from('motoboys').update({ current_lat: lat, current_lng: lng, last_seen: new Date().toISOString() }).eq('id', currentMotoboy.id);
+    }
+    // Update own marker on map
+    if (map && selfMarker) selfMarker.setLatLng([lat, lng]);
+  }, (err) => {
+    document.getElementById('gpsDot').classList.remove('active');
+    document.getElementById('gpsLabel').textContent = 'Sem GPS';
+  }, { enableHighAccuracy: true, maximumAge: 15000 });
+}
+
+function stopGPS() {
+  if (gpsWatchId !== null) { navigator.geolocation.clearWatch(gpsWatchId); gpsWatchId = null; }
+}
+
+// ─── MAP ─────────────────────────────────────
+let selfMarker = null;
+function initRouteMap() {
+  if (map) { map.remove(); map = null; markers = {}; }
+  const base = { lat: BASE.lat, lng: BASE.lng };
+  map = L.map('map', { zoomControl: false }).setView([base.lat, base.lng], 14);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { maxZoom: 19 }).addTo(map);
+
+  // Base marker
+  L.marker([base.lat, base.lng], {
+    icon: L.divIcon({ className:'', html:'<div style="background:linear-gradient(135deg,#a855f7,#7c3aed);width:16px;height:16px;border-radius:50%;border:3px solid #fff;box-shadow:0 0 12px rgba(168,85,247,0.6)"></div>', iconSize:[16,16], iconAnchor:[8,8] })
+  }).bindPopup(`<b>🏠 ${BASE.name}</b>`).addTo(map);
+
+  // Delivery markers
+  deliveries.forEach((d, i) => {
+    const done = d.status === 'delivered';
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="background:${done?'#2ddb81':'linear-gradient(135deg,#f5a623,#ff6b35)'};width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2px solid #000;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.5)"><span style="transform:rotate(45deg);font-size:11px;font-weight:700;color:#000">${done?'✓':i+1}</span></div>`,
+      iconSize:[28,28], iconAnchor:[14,28]
+    });
+    markers[d.id] = L.marker([d.lat, d.lng], { icon }).bindPopup(d.client_name).addTo(map);
+  });
+
+  drawRoute();
+  fitMap();
+}
+
+function drawRoute() {
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  const pts = [[BASE.lat, BASE.lng], ...deliveries.map(d=>[d.lat,d.lng])];
+  routeLine = L.polyline(pts, { color:'#f5a623', weight:3, opacity:.5, dashArray:'8,8' }).addTo(map);
+}
+
+function fitMap() {
+  const pts = [[BASE.lat, BASE.lng], ...deliveries.map(d=>[d.lat,d.lng])];
+  map.fitBounds(L.latLngBounds(pts), { padding:[60,60] });
+}
+
+function panToCurrent() {
+  const d = deliveries[currentIdx];
+  if (d && map) map.panTo([d.lat, d.lng], { animate:true, duration:.8 });
+}
+
+function markDelivered(id) {
+  const icon = L.divIcon({
+    className: '',
+    html: '<div style="background:#2ddb81;width:26px;height:26px;border-radius:50%;border:3px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 10px rgba(45,219,129,0.5)"><span style="font-size:12px">✓</span></div>',
+    iconSize:[26,26], iconAnchor:[13,13]
+  });
+  if (markers[id]) markers[id].setIcon(icon);
+}
+
+// ─── PANEL ───────────────────────────────────
+function renderBottomPanel() {
+  const total = deliveries.length;
+  const done = deliveries.filter(d=>d.status==='delivered').length;
+  document.getElementById('topProgress').textContent = `${done}/${total} ✓`;
+  renderCurrentDelivery();
+  renderStopsList();
+  panToCurrent();
+}
+
+function renderCurrentDelivery() {
+  const cdEl = document.getElementById('currentDelivery');
+  const btnEl = document.getElementById('actionButtons');
+  const total = deliveries.length;
+
+  if (currentIdx >= total) {
+    cdEl.innerHTML = `
+      <div class="delivery-badge last">🏠</div>
+      <div class="delivery-details">
+        <div class="delivery-title">Todas concluídas!</div>
+        <div class="delivery-address">Hora de voltar pra base</div>
+      </div>`;
+    btnEl.innerHTML = `<button class="btn-return" onclick="goReturn()" style="flex:1">🏠 Sinalizar retorno</button>`;
+    return;
+  }
+
+  const d = deliveries[currentIdx];
+  const isLast = currentIdx === total - 1;
+  cdEl.innerHTML = `
+    <div class="delivery-badge ${isLast?'last':''}">${currentIdx+1}</div>
+    <div class="delivery-details">
+      <div class="delivery-title">${d.client_name}</div>
+      <div class="delivery-address">📍 ${d.lat.toFixed(5)}, ${d.lng.toFixed(5)}</div>
+      ${isLast?'<div class="delivery-tag" style="color:var(--purple)">⚡ Última entrega</div>':''}
+    </div>`;
+  btnEl.innerHTML = `
+    <button class="btn-maps" onclick="openMaps(${d.lat},${d.lng})">🗺️ Navegar</button>
+    <button class="btn-confirm" onclick="confirmDelivery('${d.id}')">✓ Confirmar</button>`;
+}
+
+function renderStopsList() {
+  const el = document.getElementById('stopsList');
+  el.innerHTML = deliveries.map((d,i) => {
+    const done = d.status==='delivered';
+    const isActive = i === currentIdx;
+    return `<div class="stop-item ${isActive?'active-stop':''} ${done?'completed':''}">
+      <div class="stop-dot ${done?'done-dot':isActive?'active-dot':''}"></div>
+      <div class="stop-label">${i+1}. ${d.client_name}</div>
+      <div class="stop-eta">${done?'✓ feito':etaStr(i)}</div>
+    </div>`;
+  }).join('');
+}
+
+function etaStr(idx) {
+  let dist = 0, prev = { lat:BASE.lat, lng:BASE.lng };
+  for (let i=0; i<=idx; i++) {
+    if (!deliveries[i].status==='delivered') dist += haversine(prev.lat,prev.lng,deliveries[i].lat,deliveries[i].lng);
+    prev = deliveries[i];
+  }
+  const mins = Math.max(1, Math.round((dist/25)*60));
+  return `~${mins}min`;
+}
+
+// ─── CONFIRM DELIVERY ────────────────────────
+async function confirmDelivery(deliveryId) {
+  const d = deliveries.find(x=>x.id===deliveryId);
+  if (!d) return;
+  await sb.from('deliveries').update({ status:'delivered', delivered_at: new Date().toISOString() }).eq('id', deliveryId);
+  d.status = 'delivered';
+  markDelivered(deliveryId);
+  currentIdx++;
+  showToast(`✅ ${d.client_name} entregue!`);
+  renderBottomPanel();
+}
+
+function openMaps(lat, lng) {
+  window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`, '_blank');
+}
+
+// ─── RETURN ──────────────────────────────────
+async function goReturn() {
+  const lastD = deliveries[deliveries.length-1];
+  const fromPos = (window._lastGPS) ? window._lastGPS : { lat: lastD.lat, lng: lastD.lng };
+
+  // Distância real de estrada via OSRM
+  showToast('⏳ Calculando rota de retorno...');
+  const road = await roadDistance(fromPos.lat, fromPos.lng, BASE.lat, BASE.lng);
+  const returnDist = road.km;
+  const mins = Math.max(1, road.mins);
+
+  const arrival = new Date(Date.now() + mins*60000);
+  const clock = `${String(arrival.getHours()).padStart(2,'0')}:${String(arrival.getMinutes()).padStart(2,'0')}`;
+  const elapsed = startTime ? Math.round((Date.now()-startTime.getTime())/60000) : 0;
+
+  // Salva no Supabase — admin lê daqui
+  if (currentRoute) {
+    await sb.from('routes').update({
+      return_km: parseFloat(returnDist.toFixed(1)),
+      return_eta: arrival.toISOString()
+    }).eq('id', currentRoute.id);
+  }
+
+  document.getElementById('etaMinutes').textContent = mins;
+  document.getElementById('etaClock').textContent = clock;
+  document.getElementById('statD').textContent = deliveries.filter(d=>d.status==='delivered').length;
+  document.getElementById('statKm').textContent = returnDist.toFixed(1);
+  document.getElementById('statMin').textContent = elapsed || '<1';
+  showScreen('returnscreen');
+}
+
+async function finishRoute() {
+  if (currentRoute) {
+    await sb.from('routes').update({ status:'completed', completed_at: new Date().toISOString() }).eq('id', currentRoute.id);
+    await sb.from('motoboys').update({ status:'available' }).eq('id', currentMotoboy.id);
+  }
+  currentRoute = null; deliveries = []; currentIdx = 0;
+  document.getElementById('waitingName').textContent = currentMotoboy.name;
+  subscribeToRoute();
+  showScreen('waiting');
+  showToast('✅ Rota finalizada!');
+}
+
+
+// ─── DISTÂNCIA REAL DE ESTRADA (OSRM) ───────
+const CF_WORKER = 'https://masp-resolver.nicolassweimer1999.workers.dev/';
+
+async function roadDistance(lat1, lng1, lat2, lng2) {
+  const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${lng1},${lat1};${lng2},${lat2}?overview=false`;
+  // Tenta direto primeiro
+  try {
+    const r = await Promise.race([
+      fetch(osrmUrl),
+      new Promise((_,reject) => setTimeout(()=>reject(new Error('timeout')), 6000))
+    ]);
+    const data = await r.json();
+    if (data.routes?.[0]) {
+      const km = data.routes[0].distance / 1000;
+      const mins = Math.round(data.routes[0].duration / 60);
+      console.log('[OSRM direto] km:', km.toFixed(1), 'mins:', mins);
+      return { km, mins };
+    }
+  } catch(e) { console.log('[OSRM direto falhou]', e.message); }
+
+  // Tenta via Cloudflare Worker
+  try {
+    const r = await Promise.race([
+      fetch(`${CF_WORKER}?url=${encodeURIComponent(osrmUrl)}`),
+      new Promise((_,reject) => setTimeout(()=>reject(new Error('timeout')), 8000))
+    ]);
+    const data = await r.json();
+    // Worker retorna { finalUrl, body } — parse body
+    const body = typeof data.body === 'string' ? JSON.parse(data.body) : data;
+    if (body.routes?.[0]) {
+      const km = body.routes[0].distance / 1000;
+      const mins = Math.round(body.routes[0].duration / 60);
+      console.log('[OSRM worker] km:', km.toFixed(1), 'mins:', mins);
+      return { km, mins };
+    }
+  } catch(e) { console.log('[OSRM worker falhou]', e.message); }
+
+  // Fallback haversine com fator estrada
+  console.log('[OSRM fallback haversine]');
+  const km = haversine(lat1, lng1, lat2, lng2);
+  return { km, mins: Math.max(1, Math.round((km / 25) * 60)) };
+}
+
+// ─── UTILS ──────────────────────────────────
+function haversine(lat1,lng1,lat2,lng2){const R=6371,dL=(lat2-lat1)*Math.PI/180,dG=(lng2-lng1)*Math.PI/180,a=Math.sin(dL/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dG/2)**2;return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))*1.5}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (id === 'mapscreen') setTimeout(()=>map?.invalidateSize(), 100);
+}
+
+function showToast(msg, isError=false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast'+(isError?' error':'');
+  t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 2800);
+}
+</script>
+</body>
+</html>
