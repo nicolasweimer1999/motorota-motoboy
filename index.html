@@ -110,6 +110,24 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-he
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text);padding:12px 16px;font-size:13px}
 .btn-outline:hover{border-color:var(--accent);color:var(--accent)}
 
+/* ── ROUTE PREVIEW ── */
+#routepreview{padding:28px 20px;gap:16px;background:radial-gradient(ellipse at 50% 0%,rgba(45,219,129,0.08) 0%,var(--bg) 60%)}
+.preview-header{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:16px 0}
+.preview-icon{width:64px;height:64px;background:linear-gradient(135deg,var(--green),#00c875);border-radius:20px;display:flex;align-items:center;justify-content:center;font-size:28px;box-shadow:0 0 32px rgba(45,219,129,0.3);animation:pulseG 2s ease-in-out infinite}
+@keyframes pulseG{0%,100%{box-shadow:0 0 32px rgba(45,219,129,0.3)}50%{box-shadow:0 0 48px rgba(45,219,129,0.6)}}
+.preview-title{font-size:22px;font-weight:800}
+.preview-sub{font-size:13px;color:var(--muted)}
+.preview-stats{display:flex;gap:10px;width:100%}
+.preview-stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center}
+.preview-stat-val{font-size:22px;font-weight:800;font-family:'DM Mono',monospace;color:var(--accent)}
+.preview-stat-lbl{font-size:10px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:1px}
+.preview-stops{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:4px;display:flex;flex-direction:column;gap:2px;width:100%}
+.preview-stop{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px}
+.preview-stop-num{width:24px;height:24px;border-radius:7px;background:rgba(245,166,35,0.15);color:var(--accent);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.preview-stop-name{font-size:13px;font-weight:600;flex:1}
+.btn-start{background:linear-gradient(135deg,var(--green),#00c875);color:#000;padding:16px;font-size:16px;font-weight:800;border-radius:14px;border:none;cursor:pointer;font-family:'Syne',sans-serif;width:100%;transition:transform .18s}
+.btn-start:active{transform:scale(.97)}
+
 .toast{position:fixed;bottom:180px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--green);color:#000;padding:10px 20px;border-radius:30px;font-weight:700;font-size:13px;opacity:0;transition:all .3s;z-index:9999;white-space:nowrap}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .toast.error{background:var(--red);color:#fff}
@@ -141,6 +159,32 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-he
     <div style="color:var(--muted);font-size:13px">Carregando...</div>
   </div>
   <button class="btn btn-outline" onclick="resetConfig()" style="margin-top:auto">⚙️ Trocar credenciais</button>
+</div>
+
+<!-- ── ROUTE PREVIEW ── -->
+<div id="routepreview" class="screen">
+  <div class="preview-header">
+    <div class="preview-icon">📦</div>
+    <div class="preview-title">Nova rota recebida!</div>
+    <div class="preview-sub" id="previewSub">O admin enviou entregas pra você</div>
+  </div>
+  <div class="preview-stats">
+    <div class="preview-stat">
+      <div class="preview-stat-val" id="previewQtd">0</div>
+      <div class="preview-stat-lbl">Entregas</div>
+    </div>
+    <div class="preview-stat">
+      <div class="preview-stat-val" id="previewKm">—</div>
+      <div class="preview-stat-lbl">km est.</div>
+    </div>
+    <div class="preview-stat">
+      <div class="preview-stat-val" id="previewMin">—</div>
+      <div class="preview-stat-lbl">min est.</div>
+    </div>
+  </div>
+  <div class="preview-stops" id="previewStops"></div>
+  <button class="btn-start" onclick="startRoute()">🏍️ Iniciar rota</button>
+  <button class="btn btn-outline" style="font-size:12px;opacity:.6" onclick="recusarRota()">Recusar rota</button>
 </div>
 
 <!-- ── WAITING ── -->
@@ -324,12 +368,56 @@ async function loadRoute(routeId) {
   deliveries = delivData;
   currentIdx = deliveries.findIndex(d => d.status === 'pending');
   if (currentIdx === -1) currentIdx = deliveries.length;
+
+  // Se já foi aceita (reconectando), vai direto pro mapa
+  if (route.accepted_at) {
+    startTime = new Date(route.accepted_at);
+    initRouteMap();
+    showScreen('mapscreen');
+    renderBottomPanel();
+  } else {
+    // Rota nova — mostra preview pra aceitar
+    showRoutePreview();
+  }
+}
+
+function showRoutePreview() {
+  const total = deliveries.length;
+  // Estimate distance and time
+  let dist = 0, prev = { lat: BASE.lat, lng: BASE.lng };
+  deliveries.forEach(d => { dist += haversine(prev.lat, prev.lng, d.lat, d.lng); prev = d; });
+  dist += haversine(prev.lat, prev.lng, BASE.lat, BASE.lng);
+  const mins = Math.round((dist / 25) * 60);
+
+  document.getElementById('previewQtd').textContent = total;
+  document.getElementById('previewKm').textContent = dist.toFixed(1);
+  document.getElementById('previewMin').textContent = mins;
+  document.getElementById('previewSub').textContent = `${currentRoute.base_name || 'DuValle Burguer'} enviou sua rota`;
+  document.getElementById('previewStops').innerHTML = deliveries.map((d, i) => `
+    <div class="preview-stop">
+      <div class="preview-stop-num">${i+1}</div>
+      <div class="preview-stop-name">${d.client_name}</div>
+    </div>`).join('');
+
+  showScreen('routepreview');
+  showToast('📦 Nova rota recebida!');
+}
+
+async function startRoute() {
   startTime = new Date();
   await sb.from('motoboys').update({ status: 'on_route' }).eq('id', currentMotoboy.id);
+  await sb.from('routes').update({ accepted_at: new Date().toISOString() }).eq('id', currentRoute.id);
   initRouteMap();
   showScreen('mapscreen');
   renderBottomPanel();
-  showToast('📦 Nova rota recebida!');
+}
+
+async function recusarRota() {
+  await sb.from('routes').update({ status: 'pending' }).eq('id', currentRoute.id);
+  await sb.from('motoboys').update({ status: 'available' }).eq('id', currentMotoboy.id);
+  currentRoute = null; deliveries = [];
+  showScreen('waiting');
+  showToast('Rota recusada');
 }
 
 // ─── GPS ─────────────────────────────────────
@@ -595,4 +683,3 @@ function showToast(msg, isError=false) {
 </script>
 </body>
 </html>
-p
