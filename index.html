@@ -136,29 +136,37 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-he
 </head>
 <body>
 
-<!-- ── SETUP ── -->
-<div id="setup" class="screen active">
-  <div class="logo"><div class="logo-icon">🏍️</div><div class="logo-text">Moto<span>Rota</span></div></div>
-  <div>
-    <div class="field-label">Supabase URL</div>
-    <input class="input" id="sbUrl" placeholder="https://xxxx.supabase.co">
-  </div>
-  <div>
-    <div class="field-label">Anon Key</div>
-    <input class="input" id="sbKey" placeholder="eyJ..." type="password">
-  </div>
-  <div class="hint">🔑 Mesmas credenciais do painel Admin</div>
-  <button class="btn btn-accent" onclick="initApp()">Entrar →</button>
-</div>
-
 <!-- ── LOGIN ── -->
-<div id="login" class="screen">
-  <div class="logo"><div class="logo-icon">🏍️</div><div class="logo-text">Moto<span>Rota</span></div></div>
-  <div style="font-size:18px;font-weight:800">Quem é você?</div>
-  <div class="motoboy-list" id="motoboyList">
-    <div style="color:var(--muted);font-size:13px">Carregando...</div>
+<div id="login" class="screen" style="padding:32px 20px;gap:20px;justify-content:center;background:radial-gradient(ellipse at 50% 20%,rgba(245,166,35,0.08) 0%,var(--bg) 60%)">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:10px;margin-bottom:8px">
+    <div style="width:64px;height:64px;background:linear-gradient(135deg,var(--accent),var(--accent2));border-radius:18px;display:flex;align-items:center;justify-content:center;font-size:30px;box-shadow:0 0 32px rgba(245,166,35,0.3)">🏍️</div>
+    <div style="font-size:24px;font-weight:800">Moto<span style="color:var(--accent)">Rota</span></div>
+    <div style="font-size:13px;color:var(--muted)">App do Motoboy</div>
   </div>
-  <button class="btn btn-outline" onclick="resetConfig()" style="margin-top:auto">⚙️ Trocar credenciais</button>
+
+  <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:24px;display:flex;flex-direction:column;gap:14px;width:100%">
+    <div style="display:flex;gap:4px;background:var(--bg);border-radius:10px;padding:3px">
+      <button class="login-tab-btn active" id="tabEntrar" onclick="switchLoginTab('entrar')" style="flex:1;padding:9px;border:none;border-radius:8px;font-family:Syne,sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:var(--surface);color:var(--text)">Entrar</button>
+      <button class="login-tab-btn" id="tabCriar" onclick="switchLoginTab('criar')" style="flex:1;padding:9px;border:none;border-radius:8px;font-family:Syne,sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:transparent;color:var(--muted)">Criar conta</button>
+    </div>
+
+    <!-- ENTRAR -->
+    <div id="formEntrar" style="display:flex;flex-direction:column;gap:10px">
+      <input class="input" id="loginNome" placeholder="Seu nome">
+      <input class="input" id="loginSenha" type="password" placeholder="Senha" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="btn btn-accent" onclick="doLogin()">Entrar →</button>
+    </div>
+
+    <!-- CRIAR -->
+    <div id="formCriar" style="display:none;flex-direction:column;gap:10px">
+      <input class="input" id="criarNome" placeholder="Seu nome">
+      <input class="input" id="criarTel" placeholder="Telefone (opcional)">
+      <input class="input" id="criarSenha" type="password" placeholder="Cria uma senha">
+      <button class="btn btn-accent" onclick="doCriar()">Criar conta →</button>
+    </div>
+
+    <div id="loginMsg" style="font-size:11px;padding:8px 12px;border-radius:8px;text-align:center;display:none"></div>
+  </div>
 </div>
 
 <!-- ── ROUTE PREVIEW ── -->
@@ -242,7 +250,9 @@ body{font-family:'Syne',sans-serif;background:var(--bg);color:var(--text);min-he
 <div class="toast" id="toast"></div>
 
 <script>
-// ── BASE FIXA ──
+// ── CONFIG FIXA ──
+const SUPABASE_URL = 'https://yybbplqjdsbowyfwtitf.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_tqGSPvoyZ_IJ5upQjAnnEA_Rm2eisdC';
 const BASE = { name: 'DuValle Burguer', lat: -29.4707284, lng: -51.2825693 };
 let sb = null;
 let currentMotoboy = null;
@@ -256,19 +266,7 @@ let routeChannel = null, posChannel = null;
 
 // ─── INIT ──────────────────────────────────────
 async function initApp() {
-  const url = document.getElementById('sbUrl').value.trim();
-  const key = document.getElementById('sbKey').value.trim();
-  if (!url || !key) { showToast('Preenche as credenciais!', true); return; }
-  try {
-    sb = window.supabase.createClient(url, key);
-    const { error } = await sb.from('motoboys').select('id').limit(1);
-    if (error) throw error;
-    localStorage.setItem('sb_url', url);
-    localStorage.setItem('sb_key', key);
-    await loadLoginScreen();
-  } catch(e) {
-    showToast('Erro: ' + (e.message || 'Credenciais inválidas'), true);
-  }
+  // Legacy - não usado mais
 }
 
 async function loadLoginScreen() {
@@ -313,7 +311,7 @@ async function logoutMotoboy() {
   if (routeChannel) sb.removeChannel(routeChannel);
   if (currentMotoboy) await sb.from('motoboys').update({ status:'offline' }).eq('id', currentMotoboy.id);
   currentMotoboy = null;
-  await loadLoginScreen();
+  showScreen('login');
 }
 
 function resetConfig() {
@@ -325,14 +323,60 @@ function resetConfig() {
   showScreen('setup');
 }
 
+
+// ─── LOGIN ───────────────────────────────────
+function switchLoginTab(tab) {
+  document.getElementById('tabEntrar').style.background = tab === 'entrar' ? 'var(--surface)' : 'transparent';
+  document.getElementById('tabEntrar').style.color = tab === 'entrar' ? 'var(--text)' : 'var(--muted)';
+  document.getElementById('tabCriar').style.background = tab === 'criar' ? 'var(--surface)' : 'transparent';
+  document.getElementById('tabCriar').style.color = tab === 'criar' ? 'var(--text)' : 'var(--muted)';
+  document.getElementById('formEntrar').style.display = tab === 'entrar' ? 'flex' : 'none';
+  document.getElementById('formCriar').style.display = tab === 'criar' ? 'flex' : 'none';
+}
+
+function showLoginMsg(msg, isError=false) {
+  const el = document.getElementById('loginMsg');
+  el.textContent = msg;
+  el.style.display = 'block';
+  el.style.background = isError ? 'rgba(255,71,87,0.1)' : 'rgba(45,219,129,0.1)';
+  el.style.color = isError ? '#ff4757' : 'var(--green)';
+  el.style.border = isError ? '1px solid rgba(255,71,87,0.2)' : '1px solid rgba(45,219,129,0.2)';
+}
+
+async function doLogin() {
+  const nome = document.getElementById('loginNome').value.trim();
+  const senha = document.getElementById('loginSenha').value;
+  if (!nome || !senha) { showLoginMsg('Preenche nome e senha!', true); return; }
+  const { data, error } = await sb.from('motoboys').select('*').ilike('name', nome).eq('password', senha).maybeSingle();
+  if (error || !data) { showLoginMsg('Nome ou senha incorretos!', true); return; }
+  showLoginMsg('✅ Entrando...');
+  setTimeout(() => loginAs(data.id, data.name, data.phone || ''), 600);
+}
+
+async function doCriar() {
+  const nome = document.getElementById('criarNome').value.trim();
+  const tel = document.getElementById('criarTel').value.trim();
+  const senha = document.getElementById('criarSenha').value;
+  if (!nome || !senha) { showLoginMsg('Nome e senha obrigatórios!', true); return; }
+  if (senha.length < 4) { showLoginMsg('Senha mínimo 4 caracteres!', true); return; }
+  // Check if name already exists
+  const { data: exists } = await sb.from('motoboys').select('id').ilike('name', nome).maybeSingle();
+  if (exists) { showLoginMsg('Nome já cadastrado! Usa outro ou entra.', true); return; }
+  const { data, error } = await sb.from('motoboys').insert({ name: nome, phone: tel, password: senha, status: 'offline' }).select().single();
+  if (error) { showLoginMsg('Erro: ' + error.message, true); return; }
+  showLoginMsg('✅ Conta criada! Entrando...');
+  setTimeout(() => loginAs(data.id, data.name, data.phone || ''), 600);
+}
+
 window.addEventListener('DOMContentLoaded', () => {
-  const url = localStorage.getItem('sb_url');
-  const key = localStorage.getItem('sb_key');
-  if (url && key) {
-    document.getElementById('sbUrl').value = url;
-    document.getElementById('sbKey').value = key;
-    sb = window.supabase.createClient(url, key);
-    loadLoginScreen();
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  // Check saved session
+  const saved = localStorage.getItem('motorota_motoboy');
+  if (saved) {
+    const m = JSON.parse(saved);
+    loginAs(m.id, m.name, m.phone || '');
+  } else {
+    showScreen('login');
   }
 });
 
